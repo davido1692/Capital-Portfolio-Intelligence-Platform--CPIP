@@ -1,0 +1,71 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: cpip
+      POSTGRES_PASSWORD: cpip
+      POSTGRES_DB: cpip
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cpip"]
+      interval: 5s
+      retries: 5
+
+  localstack:
+    image: localstack/localstack
+    environment:
+      - SERVICES=sns,sqs
+      - DEFAULT_REGION=us-east-1
+    ports:
+      - "4566:4566"
+
+  trade-service:
+    build: ./services/trade-service
+    ports:
+      - "5002:5002"
+    environment:
+      DATABASE_URL: postgresql://cpip:cpip@postgres:5432/cpip
+      AWS_REGION: us-east-1
+      AWS_ENDPOINT_URL: http://localstack:4566
+      TRADE_EVENTS_TOPIC_ARN: arn:aws:sns:us-east-1:000000000000:cpip-trade-events
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  market-data-service:
+    build: ./services/market-data-service
+    ports:
+      - "5001:5001"
+    environment:
+      DATABASE_URL: postgresql://cpip:cpip@postgres:5432/cpip
+      AWS_REGION: us-east-1
+      AWS_ENDPOINT_URL: http://localstack:4566
+      PRICE_UPDATES_TOPIC_ARN: arn:aws:sns:us-east-1:000000000000:cpip-price-updates
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  portfolio-service: 
+      build: ./services/portfolio-service                                                                  
+      ports:    
+        - "5000:5000"                                                                                      
+      environment:
+        DATABASE_URL: postgresql://cpip:cpip@postgres:5432/cpip
+        AWS_REGION: us-east-1
+        AWS_ENDPOINT_URL: http://localstack:4566
+        PORTFOLIO_UPDATES_QUEUE_URL: http://localstack:4566/000000000000/portfolio-updates-queue
+        PORTFOLIO_RECALC_QUEUE_URL: http://localstack:4566/000000000000/portfolio-recalc-queue
+        AWS_ACCESS_KEY_ID: test
+        AWS_SECRET_ACCESS_KEY: test
+      depends_on:
+        postgres:
+          condition: service_healthy
+        localstack:
+          condition: service_started
